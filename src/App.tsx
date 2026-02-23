@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 import './App.css';
@@ -184,13 +183,13 @@ function App() {
     
     try {
       // Get message count
-      const { count: msgCount, error: msgError } = await supabase
+      const { count: msgCount } = await supabase
         .from('messages')
         .select('*', { count: 'exact', head: true })
         .eq('type', 'message');
       
       // Get unique user count from messages
-      const { data: userData, error: userError } = await supabase
+      const { data: userData } = await supabase
         .from('messages')
         .select('user_id')
         .eq('type', 'message');
