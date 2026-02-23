@@ -10,7 +10,8 @@ import {
   LogOut,
   UserPlus,
   Smile,
-  AlertCircle
+  AlertCircle,
+  WifiOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,9 +20,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 import './App.css';
 
-// Supabase configuration - REPLACE WITH YOUR VALUES
+// Supabase configuration - read from env vars
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+// Debug logging (remove in production)
+console.log('Supabase URL:', SUPABASE_URL ? 'Set' : 'Not set');
+console.log('Supabase Key:', SUPABASE_ANON_KEY ? 'Set' : 'Not set');
 
 // Types
 interface User {
@@ -52,16 +57,23 @@ interface DbMessage {
 // Generate random ID
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
-// Initialize Supabase client
+// Initialize Supabase client only if credentials are available
 let supabase: SupabaseClient | null = null;
 if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-  supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    realtime: {
-      params: {
-        eventsPerSecond: 10,
+  try {
+    supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      realtime: {
+        params: {
+          eventsPerSecond: 10,
+        },
       },
-    },
-  });
+    });
+    console.log('Supabase client initialized');
+  } catch (err) {
+    console.error('Failed to initialize Supabase:', err);
+  }
+} else {
+  console.warn('Supabase credentials missing - chat will work in local-only mode');
 }
 
 function App() {
@@ -80,6 +92,7 @@ function App() {
   const [isMobile, setIsMobile] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [isSupabaseConfigured, setIsSupabaseConfigured] = useState(!!supabase);
   
   const chatWindowRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -100,7 +113,10 @@ function App() {
   // Check Supabase configuration
   useEffect(() => {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      setConnectionError('Supabase not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables.');
+      setConnectionError('Supabase not configured. Chat will work in local-only mode.');
+      setIsSupabaseConfigured(false);
+    } else {
+      setIsSupabaseConfigured(true);
     }
   }, []);
 
@@ -123,36 +139,50 @@ function App() {
 
   // Fetch initial messages
   const fetchMessages = async () => {
-    if (!supabase) return;
-    
-    const { data, error } = await supabase
-      .from('messages')
-      .select('*')
-      .order('timestamp', { ascending: true })
-      .limit(100);
-    
-    if (error) {
-      console.error('Error fetching messages:', error);
+    if (!supabase) {
+      console.log('Supabase not available, skipping message fetch');
       return;
     }
     
-    if (data) {
-      const formattedMessages: Message[] = data.map((msg: DbMessage) => ({
-        id: msg.id,
-        userId: msg.user_id,
-        username: msg.username,
-        text: msg.text,
-        timestamp: new Date(msg.timestamp).getTime(),
-        type: msg.type,
-      }));
-      setMessages(formattedMessages);
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .order('timestamp', { ascending: true })
+        .limit(100);
+      
+      if (error) {
+        console.error('Error fetching messages:', error);
+        setConnectionError(`Database error: ${error.message}`);
+        return;
+      }
+      
+      if (data) {
+        const formattedMessages: Message[] = data.map((msg: DbMessage) => ({
+          id: msg.id,
+          userId: msg.user_id,
+          username: msg.username,
+          text: msg.text,
+          timestamp: new Date(msg.timestamp).getTime(),
+          type: msg.type,
+        }));
+        setMessages(formattedMessages);
+        console.log(`Loaded ${formattedMessages.length} messages`);
+      }
+    } catch (err) {
+      console.error('Failed to fetch messages:', err);
+      setConnectionError('Failed to connect to chat server');
     }
   };
 
   // Subscribe to real-time messages
   useEffect(() => {
-    if (!supabase || !currentUser) return;
+    if (!supabase || !currentUser) {
+      console.log('Skipping realtime subscription - supabase or user not available');
+      return;
+    }
 
+    console.log('Setting up realtime subscriptions...');
     fetchMessages();
 
     messagesChannelRef.current = supabase
@@ -161,6 +191,7 @@ function App() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
+          console.log('New message received:', payload);
           const newMsg = payload.new as DbMessage;
           const message: Message = {
             id: newMsg.id,
@@ -177,8 +208,13 @@ function App() {
         }
       )
       .subscribe((status) => {
+        console.log('Messages subscription status:', status);
         if (status === 'SUBSCRIBED') {
           setIsConnected(true);
+          setConnectionError(null);
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          setIsConnected(false);
+          setConnectionError('Realtime connection lost');
         }
       });
 
@@ -189,7 +225,12 @@ function App() {
 
   // Presence tracking
   useEffect(() => {
-    if (!supabase || !currentUser) return;
+    if (!supabase || !currentUser) {
+      console.log('Skipping presence tracking - supabase or user not available');
+      return;
+    }
+
+    console.log('Setting up presence tracking...');
 
     presenceChannelRef.current = supabase.channel('presence:chat', {
       config: {
@@ -211,6 +252,7 @@ function App() {
           }))
         );
         setUsers(onlineUsers);
+        console.log('Presence sync:', onlineUsers.length, 'users online');
       })
       .on('presence', { event: 'join' }, ({ key }) => {
         console.log('User joined:', key);
@@ -219,6 +261,7 @@ function App() {
         console.log('User left:', key);
       })
       .subscribe(async (status) => {
+        console.log('Presence subscription status:', status);
         if (status === 'SUBSCRIBED') {
           await presenceChannelRef.current?.track({
             user_id: currentUser.id,
@@ -290,18 +333,27 @@ function App() {
 
   // Send message to Supabase
   const sendMessage = async (message: Omit<Message, 'id'>) => {
-    if (!supabase) return;
+    if (!supabase) {
+      console.log('Supabase not available, message not sent');
+      return;
+    }
     
-    const { error } = await supabase.from('messages').insert({
-      user_id: message.userId,
-      username: message.username,
-      text: message.text,
-      timestamp: new Date(message.timestamp).toISOString(),
-      type: message.type,
-    });
-    
-    if (error) {
-      console.error('Error sending message:', error);
+    try {
+      const { error } = await supabase.from('messages').insert({
+        user_id: message.userId,
+        username: message.username,
+        text: message.text,
+        timestamp: new Date(message.timestamp).toISOString(),
+        type: message.type,
+      });
+      
+      if (error) {
+        console.error('Error sending message:', error);
+        setConnectionError(`Failed to send: ${error.message}`);
+      }
+    } catch (err) {
+      console.error('Failed to send message:', err);
+      setConnectionError('Failed to send message');
     }
   };
 
@@ -322,25 +374,49 @@ function App() {
     setIsChatOpen(true);
 
     // Add system message
-    await sendMessage({
-      userId: 'system',
-      username: 'System',
-      text: `${newUser.username} has entered the chat`,
-      timestamp: Date.now(),
-      type: 'system',
-    });
+    if (isSupabaseConfigured) {
+      await sendMessage({
+        userId: 'system',
+        username: 'System',
+        text: `${newUser.username} has entered the chat`,
+        timestamp: Date.now(),
+        type: 'system',
+      });
+    } else {
+      // Local-only mode
+      setMessages(prev => [...prev, {
+        id: generateId(),
+        userId: 'system',
+        username: 'System',
+        text: `${newUser.username} has entered the chat (local mode)`,
+        timestamp: Date.now(),
+        type: 'system',
+      }]);
+    }
   };
 
   const handleSendMessage = async () => {
     if (!messageInput.trim() || !currentUser) return;
 
-    await sendMessage({
-      userId: currentUser.id,
-      username: currentUser.username,
-      text: messageInput.trim(),
-      timestamp: Date.now(),
-      type: 'message',
-    });
+    if (isSupabaseConfigured) {
+      await sendMessage({
+        userId: currentUser.id,
+        username: currentUser.username,
+        text: messageInput.trim(),
+        timestamp: Date.now(),
+        type: 'message',
+      });
+    } else {
+      // Local-only mode
+      setMessages(prev => [...prev, {
+        id: generateId(),
+        userId: currentUser.id,
+        username: currentUser.username,
+        text: messageInput.trim(),
+        timestamp: Date.now(),
+        type: 'message',
+      }]);
+    }
 
     setMessageInput('');
     inputRef.current?.focus();
@@ -348,13 +424,15 @@ function App() {
 
   const handleLogout = async () => {
     if (currentUser) {
-      await sendMessage({
-        userId: 'system',
-        username: 'System',
-        text: `${currentUser.username} has left the chat`,
-        timestamp: Date.now(),
-        type: 'system',
-      });
+      if (isSupabaseConfigured) {
+        await sendMessage({
+          userId: 'system',
+          username: 'System',
+          text: `${currentUser.username} has left the chat`,
+          timestamp: Date.now(),
+          type: 'system',
+        });
+      }
     }
     setCurrentUser(null);
     setIsChatOpen(false);
@@ -402,9 +480,16 @@ function App() {
           </p>
 
           {connectionError && (
+            <div className="bg-yellow-500/20 border border-yellow-400 rounded-lg p-4 text-yellow-200 text-sm flex items-center gap-2">
+              <WifiOff className="w-4 h-4" />
+              {connectionError}
+            </div>
+          )}
+
+          {!isSupabaseConfigured && (
             <div className="bg-red-500/20 border border-red-400 rounded-lg p-4 text-red-200 text-sm">
               <AlertCircle className="w-4 h-4 inline mr-2" />
-              {connectionError}
+              Chat is running in local-only mode. Messages won't sync between users.
             </div>
           )}
 
@@ -461,7 +546,13 @@ function App() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
-            <div className="bg-yellow-50 border-2 border-yellow-400 rounded p-3 text-sm text-yellow-800">
+            {!isSupabaseConfigured && (
+              <div className="bg-yellow-50 border-2 border-yellow-400 rounded p-3 text-sm text-yellow-800">
+                <AlertCircle className="w-4 h-4 inline mr-1" />
+                Running in local mode. Messages won't sync with other users.
+              </div>
+            )}
+            <div className="bg-blue-50 border-2 border-blue-400 rounded p-3 text-sm text-blue-800">
               <AlertCircle className="w-4 h-4 inline mr-1" />
               Choose a unique screen name to join the chat room!
             </div>
@@ -476,7 +567,7 @@ function App() {
             />
             <Button
               onClick={handleCreateUser}
-              disabled={!usernameInput.trim() || !SUPABASE_URL}
+              disabled={!usernameInput.trim()}
               className="w-full aol-button py-6 text-lg font-bold"
             >
               Start Chatting!
@@ -550,7 +641,12 @@ function App() {
                   </Button>
                   <div className="flex-1" />
                   <div className="flex items-center gap-2 text-xs">
-                    {isConnected ? (
+                    {!isSupabaseConfigured ? (
+                      <span className="flex items-center gap-1 text-gray-500">
+                        <WifiOff className="w-2 h-2" />
+                        Local Mode
+                      </span>
+                    ) : isConnected ? (
                       <span className="flex items-center gap-1 text-green-600">
                         <Circle className="w-2 h-2 fill-current" />
                         Live
@@ -583,7 +679,9 @@ function App() {
                           <div className="text-center text-gray-400 py-8">
                             <div className="text-4xl mb-2">👋</div>
                             <p>Welcome to Chat!</p>
-                            <p className="text-sm">Start the conversation...</p>
+                            <p className="text-sm">
+                              {isSupabaseConfigured ? 'Start the conversation...' : 'Local mode - messages are not synced'}
+                            </p>
                           </div>
                         ) : (
                           messages.map((msg) => (
@@ -638,12 +736,12 @@ function App() {
                           value={messageInput}
                           onChange={(e) => setMessageInput(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                          placeholder="Type a message..."
+                          placeholder={isSupabaseConfigured ? "Type a message..." : "Local mode - message not synced..."}
                           className="aol-input flex-1"
                         />
                         <Button
                           onClick={handleSendMessage}
-                          disabled={!messageInput.trim() || !isConnected}
+                          disabled={!messageInput.trim()}
                           className="aol-send-btn shrink-0"
                         >
                           <Send className="w-4 h-4" />
@@ -679,7 +777,7 @@ function App() {
                         ))}
                         {getOnlineUsers().length === 0 && (
                           <div className="text-center text-gray-400 text-xs py-4">
-                            No buddies online
+                            {isSupabaseConfigured ? 'No buddies online' : 'Local mode - no sync'}
                           </div>
                         )}
                       </div>
@@ -694,8 +792,17 @@ function App() {
                     <span>{getOnlineUsers().length} buddies online</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Circle className={`w-2 h-2 fill-current ${isConnected ? 'text-green-500' : 'text-yellow-500'}`} />
-                    <span>{isConnected ? 'Connected' : 'Connecting...'}</span>
+                    {!isSupabaseConfigured ? (
+                      <>
+                        <WifiOff className="w-2 h-2 text-gray-500" />
+                        <span className="text-gray-500">Local</span>
+                      </>
+                    ) : (
+                      <>
+                        <Circle className={`w-2 h-2 fill-current ${isConnected ? 'text-green-500' : 'text-yellow-500'}`} />
+                        <span>{isConnected ? 'Connected' : 'Connecting...'}</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </>
