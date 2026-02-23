@@ -16,7 +16,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 import './App.css';
+
+// Supabase configuration - REPLACE WITH YOUR VALUES
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 // Types
 interface User {
@@ -35,13 +40,29 @@ interface Message {
   type: 'message' | 'system';
 }
 
-// Storage keys
-const STORAGE_KEY_USERS = 'aol_chat_users';
-const STORAGE_KEY_MESSAGES = 'aol_chat_messages';
-const STORAGE_KEY_CURRENT_USER = 'aol_chat_current_user';
+interface DbMessage {
+  id: string;
+  user_id: string;
+  username: string;
+  text: string;
+  timestamp: string;
+  type: 'message' | 'system';
+}
 
 // Generate random ID
 const generateId = () => Math.random().toString(36).substring(2, 9);
+
+// Initialize Supabase client
+let supabase: SupabaseClient | null = null;
+if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+  supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
+    },
+  });
+}
 
 function App() {
   // State
@@ -57,10 +78,14 @@ function App() {
   const [position, setPosition] = useState({ x: 100, y: 100 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isMobile, setIsMobile] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   
   const chatWindowRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const presenceChannelRef = useRef<RealtimeChannel | null>(null);
+  const messagesChannelRef = useRef<RealtimeChannel | null>(null);
 
   // Check if mobile
   useEffect(() => {
@@ -72,79 +97,160 @@ function App() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Load data from localStorage on mount
+  // Check Supabase configuration
   useEffect(() => {
-    const savedCurrentUser = localStorage.getItem(STORAGE_KEY_CURRENT_USER);
-    const savedUsers = localStorage.getItem(STORAGE_KEY_USERS);
-    const savedMessages = localStorage.getItem(STORAGE_KEY_MESSAGES);
-
-    if (savedCurrentUser) {
-      setCurrentUser(JSON.parse(savedCurrentUser));
-      setIsChatOpen(true);
-    }
-
-    if (savedUsers) {
-      setUsers(JSON.parse(savedUsers));
-    }
-
-    if (savedMessages) {
-      setMessages(JSON.parse(savedMessages));
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      setConnectionError('Supabase not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables.');
     }
   }, []);
 
-  // Save data to localStorage whenever it changes
+  // Load current user from localStorage on mount
+  useEffect(() => {
+    const savedCurrentUser = localStorage.getItem('tappedin_current_user');
+    if (savedCurrentUser) {
+      const user = JSON.parse(savedCurrentUser);
+      setCurrentUser(user);
+      setIsChatOpen(true);
+    }
+  }, []);
+
+  // Save current user to localStorage
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem(STORAGE_KEY_CURRENT_USER, JSON.stringify(currentUser));
+      localStorage.setItem('tappedin_current_user', JSON.stringify(currentUser));
     }
   }, [currentUser]);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
-  }, [users]);
+  // Fetch initial messages
+  const fetchMessages = async () => {
+    if (!supabase) return;
+    
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .order('timestamp', { ascending: true })
+      .limit(100);
+    
+    if (error) {
+      console.error('Error fetching messages:', error);
+      return;
+    }
+    
+    if (data) {
+      const formattedMessages: Message[] = data.map((msg: DbMessage) => ({
+        id: msg.id,
+        userId: msg.user_id,
+        username: msg.username,
+        text: msg.text,
+        timestamp: new Date(msg.timestamp).getTime(),
+        type: msg.type,
+      }));
+      setMessages(formattedMessages);
+    }
+  };
 
+  // Subscribe to real-time messages
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_MESSAGES, JSON.stringify(messages));
-  }, [messages]);
+    if (!supabase || !currentUser) return;
+
+    fetchMessages();
+
+    messagesChannelRef.current = supabase
+      .channel('messages')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          const newMsg = payload.new as DbMessage;
+          const message: Message = {
+            id: newMsg.id,
+            userId: newMsg.user_id,
+            username: newMsg.username,
+            text: newMsg.text,
+            timestamp: new Date(newMsg.timestamp).getTime(),
+            type: newMsg.type,
+          };
+          setMessages((prev) => {
+            if (prev.find((m) => m.id === message.id)) return prev;
+            return [...prev, message];
+          });
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setIsConnected(true);
+        }
+      });
+
+    return () => {
+      messagesChannelRef.current?.unsubscribe();
+    };
+  }, [currentUser]);
+
+  // Presence tracking
+  useEffect(() => {
+    if (!supabase || !currentUser) return;
+
+    presenceChannelRef.current = supabase.channel('presence:chat', {
+      config: {
+        presence: {
+          key: currentUser.id,
+        },
+      },
+    });
+
+    presenceChannelRef.current
+      .on('presence', { event: 'sync' }, () => {
+        const state = presenceChannelRef.current?.presenceState() || {};
+        const onlineUsers: User[] = Object.values(state).flatMap((presences: any) =>
+          presences.map((p: any) => ({
+            id: p.user_id,
+            username: p.username,
+            status: p.status,
+            lastSeen: p.last_seen,
+          }))
+        );
+        setUsers(onlineUsers);
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        console.log('User joined:', key);
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        console.log('User left:', key);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await presenceChannelRef.current?.track({
+            user_id: currentUser.id,
+            username: currentUser.username,
+            status: currentUser.status,
+            last_seen: Date.now(),
+          });
+        }
+      });
+
+    // Update presence every 10 seconds
+    const interval = setInterval(async () => {
+      if (currentUser) {
+        await presenceChannelRef.current?.track({
+          user_id: currentUser.id,
+          username: currentUser.username,
+          status: currentUser.status,
+          last_seen: Date.now(),
+        });
+      }
+    }, 10000);
+
+    return () => {
+      clearInterval(interval);
+      presenceChannelRef.current?.unsubscribe();
+    };
+  }, [currentUser]);
 
   // Scroll to bottom of messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  // Update user's last seen periodically
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const interval = setInterval(() => {
-      const updatedUser = { ...currentUser, lastSeen: Date.now() };
-      setCurrentUser(updatedUser);
-      
-      setUsers(prev => {
-        const filtered = prev.filter(u => u.id !== currentUser.id);
-        return [...filtered, updatedUser];
-      });
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [currentUser]);
-
-  // Listen for storage changes (for multi-tab support)
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY_USERS) {
-        const newUsers = e.newValue ? JSON.parse(e.newValue) : [];
-        setUsers(newUsers);
-      }
-      if (e.key === STORAGE_KEY_MESSAGES) {
-        const newMessages = e.newValue ? JSON.parse(e.newValue) : [];
-        setMessages(newMessages);
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
 
   // Drag handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -182,8 +288,25 @@ function App() {
     };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
+  // Send message to Supabase
+  const sendMessage = async (message: Omit<Message, 'id'>) => {
+    if (!supabase) return;
+    
+    const { error } = await supabase.from('messages').insert({
+      user_id: message.userId,
+      username: message.username,
+      text: message.text,
+      timestamp: new Date(message.timestamp).toISOString(),
+      type: message.type,
+    });
+    
+    if (error) {
+      console.error('Error sending message:', error);
+    }
+  };
+
   // Handlers
-  const handleCreateUser = () => {
+  const handleCreateUser = async () => {
     if (!usernameInput.trim()) return;
 
     const newUser: User = {
@@ -194,56 +317,49 @@ function App() {
     };
 
     setCurrentUser(newUser);
-    setUsers(prev => [...prev, newUser]);
     setUsernameInput('');
     setShowLoginDialog(false);
     setIsChatOpen(true);
 
     // Add system message
-    const systemMessage: Message = {
-      id: generateId(),
+    await sendMessage({
       userId: 'system',
       username: 'System',
       text: `${newUser.username} has entered the chat`,
       timestamp: Date.now(),
       type: 'system',
-    };
-    setMessages(prev => [...prev, systemMessage]);
+    });
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!messageInput.trim() || !currentUser) return;
 
-    const newMessage: Message = {
-      id: generateId(),
+    await sendMessage({
       userId: currentUser.id,
       username: currentUser.username,
       text: messageInput.trim(),
       timestamp: Date.now(),
       type: 'message',
-    };
+    });
 
-    setMessages(prev => [...prev, newMessage]);
     setMessageInput('');
     inputRef.current?.focus();
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (currentUser) {
-      const systemMessage: Message = {
-        id: generateId(),
+      await sendMessage({
         userId: 'system',
         username: 'System',
         text: `${currentUser.username} has left the chat`,
         timestamp: Date.now(),
         type: 'system',
-      };
-      setMessages(prev => [...prev, systemMessage]);
-      setUsers(prev => prev.filter(u => u.id !== currentUser.id));
+      });
     }
     setCurrentUser(null);
     setIsChatOpen(false);
-    localStorage.removeItem(STORAGE_KEY_CURRENT_USER);
+    localStorage.removeItem('tappedin_current_user');
+    presenceChannelRef.current?.untrack();
   };
 
   const formatTime = (timestamp: number) => {
@@ -255,7 +371,7 @@ function App() {
 
   const getOnlineUsers = () => {
     const now = Date.now();
-    return users.filter(u => now - u.lastSeen < 30000); // Online if seen in last 30s
+    return users.filter(u => now - u.lastSeen < 60000); // Online if seen in last 60s
   };
 
   // Render
@@ -284,6 +400,13 @@ function App() {
           <p className="text-xl text-blue-100 leading-relaxed">
             start chatting with others in the community
           </p>
+
+          {connectionError && (
+            <div className="bg-red-500/20 border border-red-400 rounded-lg p-4 text-red-200 text-sm">
+              <AlertCircle className="w-4 h-4 inline mr-2" />
+              {connectionError}
+            </div>
+          )}
 
           {!currentUser ? (
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
@@ -353,7 +476,7 @@ function App() {
             />
             <Button
               onClick={handleCreateUser}
-              disabled={!usernameInput.trim()}
+              disabled={!usernameInput.trim() || !SUPABASE_URL}
               className="w-full aol-button py-6 text-lg font-bold"
             >
               Start Chatting!
@@ -426,6 +549,19 @@ function App() {
                     Chat
                   </Button>
                   <div className="flex-1" />
+                  <div className="flex items-center gap-2 text-xs">
+                    {isConnected ? (
+                      <span className="flex items-center gap-1 text-green-600">
+                        <Circle className="w-2 h-2 fill-current" />
+                        Live
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-yellow-600">
+                        <Circle className="w-2 h-2 fill-current" />
+                        Connecting...
+                      </span>
+                    )}
+                  </div>
                   <Button
                     variant="outline"
                     size="sm"
@@ -507,7 +643,7 @@ function App() {
                         />
                         <Button
                           onClick={handleSendMessage}
-                          disabled={!messageInput.trim()}
+                          disabled={!messageInput.trim() || !isConnected}
                           className="aol-send-btn shrink-0"
                         >
                           <Send className="w-4 h-4" />
@@ -558,8 +694,8 @@ function App() {
                     <span>{getOnlineUsers().length} buddies online</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Circle className="w-2 h-2 fill-green-500 text-green-500" />
-                    <span>Connected</span>
+                    <Circle className={`w-2 h-2 fill-current ${isConnected ? 'text-green-500' : 'text-yellow-500'}`} />
+                    <span>{isConnected ? 'Connected' : 'Connecting...'}</span>
                   </div>
                 </div>
               </>
