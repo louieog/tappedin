@@ -212,10 +212,10 @@ function App() {
         );
         setUsers(onlineUsers);
       })
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+      .on('presence', { event: 'join' }, ({ key }) => {
         console.log('User joined:', key);
       })
-      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+      .on('presence', { event: 'leave' }, ({ key }) => {
         console.log('User left:', key);
       })
       .subscribe(async (status) => {
