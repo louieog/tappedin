@@ -1,0 +1,362 @@
+/* AOL Retro Chat Styles */
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+
+::-webkit-scrollbar-track {
+  background: #c0c0c0;
+  border: 2px solid #808080;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c0c0c0;
+  border: 2px solid #808080;
+  box-shadow: inset 1px 1px #ffffff, inset -1px -1px #404040;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #d4d4d4;
+}
+
+::-webkit-scrollbar-button {
+  background: #c0c0c0;
+  border: 2px solid #808080;
+  box-shadow: inset 1px 1px #ffffff, inset -1px -1px #404040;
+  height: 16px;
+  width: 16px;
+}
+
+/* AOL Window Chrome - Classic Style */
+.aol-window {
+  background: #c0c0c0;
+  border: 2px solid #ffffff;
+  border-right-color: #404040;
+  border-bottom-color: #404040;
+  box-shadow: 
+    inset 1px 1px #ffffff,
+    inset -1px -1px #808080,
+    4px 4px 12px rgba(0, 0, 0, 0.3);
+  border-radius: 0;
+}
+
+/* AOL Window 3D - Sunken Effect with Floating Animation */
+.aol-window-3d {
+  background: #c0c0c0;
+  border: 3px solid;
+  border-color: #ffffff #404040 #404040 #ffffff;
+  border-radius: 4px;
+  box-shadow: 
+    /* Inner sunken shadow effect */
+    inset 2px 2px 4px rgba(0, 0, 0, 0.2),
+    inset -2px -2px 4px rgba(255, 255, 255, 0.5),
+    /* Outer 3D raised effect */
+    4px 4px 0 #808080,
+    5px 5px 0 #606060,
+    6px 6px 0 #404040,
+    /* Deep drop shadow */
+    12px 16px 32px rgba(0, 0, 0, 0.4),
+    0 0 60px rgba(0, 0, 80, 0.15);
+}
+
+/* Floating Animation for the Chat Window */
+.aol-floating-window {
+  animation: aol-float 4s ease-in-out infinite;
+}
+
+@keyframes aol-float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  25% {
+    transform: translateY(-4px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+  75% {
+    transform: translateY(-4px);
+  }
+}
+
+/* Pause floating animation when dragging */
+.aol-floating-window:active {
+  animation-play-state: paused;
+}
+
+/* Sunken inner content area */
+.aol-window-3d .aol-content-sunken {
+  background: #e0e0e0;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 3px 3px 8px rgba(0, 0, 0, 0.15);
+}
+
+.aol-titlebar {
+  background: linear-gradient(90deg, #000080 0%, #1084d0 100%);
+  border-bottom: 2px solid #808080;
+}
+
+.aol-menubar {
+  background: #c0c0c0;
+}
+
+.aol-toolbar {
+  background: #c0c0c0;
+}
+
+.aol-statusbar {
+  background: #c0c0c0;
+  border-top: 2px solid #808080;
+  box-shadow: inset 0 1px #ffffff;
+}
+
+.aol-input-area {
+  background: #c0c0c0;
+}
+
+/* Window Buttons */
+.aol-window-btn {
+  background: #c0c0c0;
+  border: 1px solid #ffffff;
+  border-right-color: #404040;
+  border-bottom-color: #404040;
+  color: #000000;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.aol-window-btn:active {
+  border: 1px solid #404040;
+  border-right-color: #ffffff;
+  border-bottom-color: #ffffff;
+}
+
+/* AOL Buttons */
+.aol-button {
+  background: #c0c0c0 !important;
+  border: 2px solid #ffffff !important;
+  border-right-color: #404040 !important;
+  border-bottom-color: #404040 !important;
+  color: #000000 !important;
+  border-radius: 0 !important;
+  box-shadow: inset 1px 1px #ffffff, inset -1px -1px #808080 !important;
+  text-transform: none !important;
+  font-family: 'MS Sans Serif', 'Tahoma', sans-serif !important;
+}
+
+.aol-button:hover {
+  background: #d4d4d4 !important;
+}
+
+.aol-button:active {
+  border: 2px solid #404040 !important;
+  border-right-color: #ffffff !important;
+  border-bottom-color: #ffffff !important;
+  box-shadow: inset 1px 1px #808080, inset -1px -1px #ffffff !important;
+}
+
+.aol-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Send Button */
+.aol-send-btn {
+  background: #000080 !important;
+  border: 2px solid #ffffff !important;
+  border-right-color: #404040 !important;
+  border-bottom-color: #404040 !important;
+  color: #ffffff !important;
+  border-radius: 0 !important;
+  box-shadow: inset 1px 1px #8080ff, inset -1px -1px #000040 !important;
+}
+
+.aol-send-btn:hover {
+  background: #0000a0 !important;
+}
+
+.aol-send-btn:active {
+  border: 2px solid #404040 !important;
+  border-right-color: #ffffff !important;
+  border-bottom-color: #ffffff !important;
+}
+
+/* Inputs */
+.aol-input {
+  background: #ffffff !important;
+  border: 2px solid #808080 !important;
+  border-top-color: #404040 !important;
+  border-left-color: #404040 !important;
+  border-radius: 0 !important;
+  box-shadow: inset 1px 1px #00000020 !important;
+  font-family: 'MS Sans Serif', 'Tahoma', sans-serif !important;
+}
+
+.aol-input:focus {
+  outline: none !important;
+  border-color: #000080 !important;
+}
+
+/* Dialog */
+.aol-dialog {
+  background: #c0c0c0 !important;
+  border: 2px solid #ffffff !important;
+  border-right-color: #404040 !important;
+  border-bottom-color: #404040 !important;
+  border-radius: 0 !important;
+  box-shadow: 
+    inset 1px 1px #ffffff,
+    inset -1px -1px #808080,
+    8px 8px 24px rgba(0, 0, 0, 0.4) !important;
+}
+
+.aol-dialog > div {
+  background: #c0c0c0 !important;
+}
+
+/* Message Bubbles */
+.aol-message-sent {
+  background: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: 12px 12px 2px 12px;
+  padding: 8px 12px;
+  box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.aol-message-received {
+  background: #f5f5f5;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px 12px 12px 2px;
+  padding: 8px 12px;
+  box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Floating Button */
+.aol-floating-btn {
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(135deg, #000080 0%, #1084d0 100%);
+  border: 3px solid #ffffff;
+  border-right-color: #404040;
+  border-bottom-color: #404040;
+  border-radius: 50%;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 
+    inset 1px 1px rgba(255, 255, 255, 0.3),
+    inset -1px -1px rgba(0, 0, 0, 0.3),
+    4px 4px 12px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.aol-floating-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 
+    inset 1px 1px rgba(255, 255, 255, 0.3),
+    inset -1px -1px rgba(0, 0, 0, 0.3),
+    6px 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+.aol-floating-btn:active {
+  transform: scale(0.95);
+  border: 3px solid #404040;
+  border-right-color: #ffffff;
+  border-bottom-color: #ffffff;
+}
+
+/* Retro Font Stack */
+body {
+  font-family: 'MS Sans Serif', 'Tahoma', 'Verdana', sans-serif;
+}
+
+/* Selection */
+::selection {
+  background: #000080;
+  color: #ffffff;
+}
+
+/* Focus styles */
+*:focus-visible {
+  outline: 2px solid #000080;
+  outline-offset: 2px;
+}
+
+/* Animation for "You've Got Mail" style notifications */
+@keyframes flash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.aol-flash {
+  animation: flash 1s ease-in-out infinite;
+}
+
+/* Retro grid background for landing */
+.retro-grid {
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .aol-window,
+  .aol-window-3d {
+    border: none;
+    box-shadow: 
+      inset 2px 2px 4px rgba(0, 0, 0, 0.2),
+      0 0 40px rgba(0, 0, 0, 0.5);
+    border-radius: 0;
+  }
+  
+  .aol-floating-window {
+    animation: none;
+  }
+  
+  .aol-titlebar {
+    border-radius: 0;
+  }
+  
+  .aol-message-sent,
+  .aol-message-received {
+    max-width: 90%;
+  }
+}
+
+/* ScrollArea customization */
+[data-radix-scroll-area-viewport] > div {
+  display: block !important;
+}
+
+/* Button overrides for shadcn */
+button[variant="outline"] {
+  background: #c0c0c0;
+  border: 2px solid #ffffff;
+  border-right-color: #404040;
+  border-bottom-color: #404040;
+  border-radius: 0;
+}
+
+button[variant="outline"]:active {
+  border: 2px solid #404040;
+  border-right-color: #ffffff;
+  border-bottom-color: #ffffff;
+}
+
+/* Tab buttons */
+[role="tab"] {
+  border-radius: 0 !important;
+}
+
+/* Dialog overlay */
+[data-state="open"] > [data-radix-dialog-overlay] {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
