@@ -93,6 +93,7 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isSupabaseConfigured, setIsSupabaseConfigured] = useState(!!supabase);
+  const [stats, setStats] = useState({ onlineCount: 0, messageCount: 0, totalUsers: 0 });
   
   const chatWindowRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -128,6 +129,8 @@ function App() {
       setCurrentUser(user);
       setIsChatOpen(true);
     }
+    // Fetch stats for landing page even if not logged in
+    fetchStats();
   }, []);
 
   // Save current user to localStorage
@@ -172,6 +175,35 @@ function App() {
     } catch (err) {
       console.error('Failed to fetch messages:', err);
       setConnectionError('Failed to connect to chat server');
+    }
+  };
+
+  // Fetch stats for landing page (message count, total users)
+  const fetchStats = async () => {
+    if (!supabase) return;
+    
+    try {
+      // Get message count
+      const { count: msgCount, error: msgError } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('type', 'message');
+      
+      // Get unique user count from messages
+      const { data: userData, error: userError } = await supabase
+        .from('messages')
+        .select('user_id')
+        .eq('type', 'message');
+      
+      const uniqueUsers = userData ? new Set(userData.map(m => m.user_id)).size : 0;
+      
+      setStats({
+        onlineCount: getOnlineUsers().length,
+        messageCount: msgCount || 0,
+        totalUsers: uniqueUsers,
+      });
+    } catch (err) {
+      console.error('Failed to fetch stats:', err);
     }
   };
 
@@ -518,15 +550,15 @@ function App() {
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-12 max-w-lg mx-auto">
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
-              <div className="text-3xl font-bold text-yellow-400">{getOnlineUsers().length}</div>
+              <div className="text-3xl font-bold text-yellow-400">{stats.onlineCount}</div>
               <div className="text-sm text-blue-200">Online Now</div>
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
-              <div className="text-3xl font-bold text-yellow-400">{messages.filter(m => m.type === 'message').length}</div>
+              <div className="text-3xl font-bold text-yellow-400">{stats.messageCount}</div>
               <div className="text-sm text-blue-200">Messages</div>
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20 col-span-2 md:col-span-1">
-              <div className="text-3xl font-bold text-yellow-400">{users.length}</div>
+              <div className="text-3xl font-bold text-yellow-400">{stats.totalUsers}</div>
               <div className="text-sm text-blue-200">Total Users</div>
             </div>
           </div>
@@ -672,10 +704,10 @@ function App() {
                 {/* Content Area - Always shows chat with buddy list sidebar */}
                 <div className="flex-1 flex overflow-hidden bg-white">
                   {/* Chat Messages */}
-                  <div className="flex-1 flex flex-col">
-                    <ScrollArea className="flex-1 p-4">
+                  <div className="flex-1 flex flex-col min-w-0">
+                    <div className="flex-1 overflow-y-auto p-4">
                       <div className="space-y-3">
-                        {messages.length === 0 ? (
+                        {messages.filter(m => m.userId !== 'stat').length === 0 ? (
                           <div className="text-center text-gray-400 py-8">
                             <div className="text-4xl mb-2">👋</div>
                             <p>Welcome to Chat!</p>
@@ -684,7 +716,7 @@ function App() {
                             </p>
                           </div>
                         ) : (
-                          messages.map((msg) => (
+                          messages.filter(m => m.userId !== 'stat').map((msg) => (
                             <div
                               key={msg.id}
                               className={`${
@@ -719,7 +751,7 @@ function App() {
                         )}
                         <div ref={messagesEndRef} />
                       </div>
-                    </ScrollArea>
+                    </div>
 
                     {/* Input Area */}
                     <div className="aol-input-area no-drag p-3 border-t border-gray-400 bg-gray-100">
@@ -750,13 +782,13 @@ function App() {
                     </div>
                   </div>
 
-                  {/* Buddy List Sidebar - Always visible */}
-                  <div className="w-48 border-l border-gray-400 bg-gray-50 flex flex-col shrink-0">
-                    <div className="bg-blue-600 text-white text-xs font-bold px-3 py-2 flex items-center gap-2">
+                  {/* Buddy List Sidebar - Fixed position */}
+                  <div className="w-48 border-l border-gray-400 bg-gray-50 flex flex-col shrink-0 h-full">
+                    <div className="bg-blue-600 text-white text-xs font-bold px-3 py-2 flex items-center gap-2 shrink-0">
                       <Users className="w-3 h-3" />
                       Buddies ({getOnlineUsers().length})
                     </div>
-                    <ScrollArea className="flex-1">
+                    <div className="flex-1 overflow-y-auto">
                       <div className="p-2 space-y-1">
                         {getOnlineUsers().map((user) => (
                           <div
@@ -781,14 +813,14 @@ function App() {
                           </div>
                         )}
                       </div>
-                    </ScrollArea>
+                    </div>
                   </div>
                 </div>
 
                 {/* Status Bar */}
-                <div className="aol-statusbar no-drag px-2 py-1 text-xs flex items-center justify-between">
+                <div className="aol-statusbar no-drag px-2 py-1 text-xs flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-4">
-                    <span>{messages.filter(m => m.type === 'message').length} messages</span>
+                    <span>{messages.filter(m => m.type === 'message' && m.userId !== 'stat').length} messages</span>
                     <span>{getOnlineUsers().length} buddies online</span>
                   </div>
                   <div className="flex items-center gap-2">
